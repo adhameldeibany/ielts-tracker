@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>Cambridge Tracker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%236366f1'/%3E%3Ctext x='50' y='68' font-size='60' text-anchor='middle' fill='white' font-family='Arial'%3E%E2%9C%93%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0f172a;
+    --card:#1e293b;
+    --border:#334155;
+    --text:#e2e8f0;
+    --muted:#94a3b8;
+    --accent:#6366f1;
+    --done:#16a34a;
+    --done-bg:#052e16;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:'Segoe UI',Tahoma,Arial,sans-serif;
+    background:linear-gradient(135deg,#0f172a,#1e1b4b);
+    color:var(--text);
+    min-height:100vh;
+    padding:32px 16px;
+  }
+  .wrap{max-width:900px;margin:0 auto;}
+  h1{
+    text-align:center;
+    font-size:28px;
+    margin-bottom:4px;
+    background:linear-gradient(90deg,#818cf8,#c084fc);
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+  }
+  .subtitle{text-align:center;color:var(--muted);margin-bottom:24px;font-size:14px;}
+  .progress-bar{
+    background:var(--card);
+    border-radius:999px;
+    height:14px;
+    overflow:hidden;
+    margin-bottom:8px;
+    border:1px solid var(--border);
+  }
+  .progress-fill{
+    height:100%;
+    background:linear-gradient(90deg,#22c55e,#4ade80);
+    width:0%;
+    transition:width .4s ease;
+  }
+  .progress-label{text-align:center;color:var(--muted);font-size:13px;margin-bottom:28px;}
+  .grid{
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+  }
+  .book{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:16px 18px;
+    transition:background .3s, border-color .3s;
+  }
+  .book.complete{
+    background:var(--done-bg);
+    border-color:var(--done);
+    box-shadow:0 0 0 1px rgba(74,222,128,.25);
+  }
+  .book h2{
+    margin:0 0 10px;
+    font-size:17px;
+    color:#c7d2fe;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  .book.complete h2{color:#86efac;}
+  .book h2 span.count{font-size:12px;color:var(--muted);font-weight:normal;}
+  .book.complete h2 span.count{color:#4ade80;}
+  .test-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px;
+    cursor:pointer;
+    transition:background .2s;
+    user-select:none;
+    border-bottom:1px solid var(--border);
+  }
+  .test-row:last-child{border-bottom:none;}
+  .test-row:hover{background:#273549;}
+  .test-row.done{
+    background:var(--done-bg);
+  }
+  .checkbox{
+    width:20px;height:20px;
+    border-radius:6px;
+    border:2px solid var(--muted);
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+    transition:all .2s;
+  }
+  .test-row.done .checkbox{
+    background:var(--done);
+    border-color:var(--done);
+  }
+  .checkbox svg{width:13px;height:13px;opacity:0;transition:opacity .15s;}
+  .test-row.done .checkbox svg{opacity:1;}
+  .test-label{font-size:14px;color:var(--text);}
+  .test-row.done .test-label{color:#86efac;text-decoration:line-through;text-decoration-color:#4ade80;}
+  .mark-input{
+    margin-right:auto;
+    width:48px;
+    text-align:center;
+    background:#0f172a;
+    border:1px solid var(--border);
+    color:var(--text);
+    border-radius:6px;
+    font-size:12px;
+    padding:3px 2px;
+  }
+  .test-row.done .mark-input{border-color:var(--done);}
+  .footer-note{
+    text-align:center;
+    color:var(--muted);
+    font-size:12px;
+    margin-top:28px;
+  }
+  .status{
+    text-align:center;
+    font-size:12px;
+    color:var(--muted);
+    min-height:18px;
+    margin-bottom:10px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📚 متابعة اختبارات Cambridge IELTS</h1>
+  <div class="subtitle">من 14 لـ 21 — علّم كل اختبار بعد ما تخلصه</div>
+
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="progress-label" id="progressLabel">جاري التحميل...</div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="footer-note">بياناتك بتتحفظ تلقائي — لو عملتِ ريفريش هتلاقيها زي ما هي.</div>
+</div>
+
+<script>
+const books = [14,15,16,17,18,19,20,21];
+const testsPerBook = 4;
+const STORAGE_KEY = 'cambridge-tracker-state';
+
+let state = {}; // { "14-1": {done:true, mark:"7.0"}, ... }
+
+function cellKey(book, test){ return book + '-' + test; }
+
+const hasClaudeStorage = typeof window.storage !== 'undefined';
+
+async function loadState(){
+  try{
+    if(hasClaudeStorage){
+      const res = await window.storage.get(STORAGE_KEY, false);
+      if(res && res.value) state = JSON.parse(res.value);
+    } else {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw) state = JSON.parse(raw);
+    }
+  }catch(e){
+    state = {};
+  }
+  render();
+}
+
+async function saveState(attempt = 1){
+  try{
+    if(hasClaudeStorage){
+      const result = await window.storage.set(STORAGE_KEY, JSON.stringify(state), false);
+      if(!result) throw new Error('empty result');
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+  }catch(e){
+    if(attempt < 6){
+      setTimeout(()=>saveState(attempt + 1), 500 * attempt);
+    }
+    // silent — keeps retrying in background
+  }
+}
+
+function toggleDone(book, test){
+  const key = cellKey(book, test);
+  if(!state[key]) state[key] = {done:false, mark:''};
+  state[key].done = !state[key].done;
+  saveState();
+  render();
+}
+
+function updateMark(book, test, value){
+  const key = cellKey(book, test);
+  if(!state[key]) state[key] = {done:false, mark:''};
+  state[key].mark = value;
+  saveState();
+}
+
+function render(){
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  let doneCount = 0;
+  const total = books.length * testsPerBook;
+
+  books.forEach(book=>{
+    const bookDiv = document.createElement('div');
+    bookDiv.className = 'book';
+
+    let bookDone = 0;
+    for(let t=1;t<=testsPerBook;t++){
+      const key = cellKey(book,t);
+      if(state[key] && state[key].done) bookDone++;
+    }
+    doneCount += bookDone;
+
+    if(bookDone === testsPerBook){
+      bookDiv.classList.add('complete');
+    }
+
+    const h2 = document.createElement('h2');
+    h2.innerHTML = `Cambridge ${book} <span class="count">${bookDone}/${testsPerBook}</span>`;
+    bookDiv.appendChild(h2);
+
+    for(let t=1;t<=testsPerBook;t++){
+      const key = cellKey(book,t);
+      const entry = state[key] || {done:false, mark:''};
+
+      const row = document.createElement('div');
+      row.className = 'test-row' + (entry.done ? ' done' : '');
+
+      const box = document.createElement('div');
+      box.className = 'checkbox';
+      box.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>';
+
+      const label = document.createElement('div');
+      label.className = 'test-label';
+      label.textContent = 'Test ' + t;
+
+      const markInput = document.createElement('input');
+      markInput.className = 'mark-input';
+      markInput.placeholder = 'Band';
+      markInput.value = entry.mark || '';
+      markInput.addEventListener('click', e=>e.stopPropagation());
+      markInput.addEventListener('change', e=>updateMark(book,t,e.target.value));
+
+      row.appendChild(box);
+      row.appendChild(label);
+      row.appendChild(markInput);
+
+      row.addEventListener('click', ()=>toggleDone(book,t));
+
+      bookDiv.appendChild(row);
+    }
+
+    grid.appendChild(bookDiv);
+  });
+
+  const pct = Math.round((doneCount/total)*100);
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = `${doneCount} من ${total} اختبار (${pct}%)`;
+}
+
+loadState();
+</script>
+</body>
+</html>
